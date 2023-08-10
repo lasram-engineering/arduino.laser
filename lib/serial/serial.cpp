@@ -97,12 +97,12 @@ bool processCommand(String key, String value)
         if (value == ON)
         {
             Serial.println("Shutter on");
-            digitalWrite(SHUTTER_PIN, HIGH);
+            digitalWrite(IN_SHUTTER_OPEN, HIGH);
         }
         else if (value == OFF)
         {
             Serial.println("Shutter off");
-            digitalWrite(SHUTTER_PIN, LOW);
+            digitalWrite(IN_SHUTTER_OPEN, LOW);
         }
         else
         {

@@ -1,63 +1,129 @@
 #include "Arduino.h"
-
+#include "config.h"
 #include "pwm.h"
-#include "serial.h"
-#include "timer.h"
 
 #define BAUDRATE 9600
+#define IN_SHUTTER_OPEN 2
+#define IN_LASER_ENABLE 3
 
-/// Initializes the interrupts
-void setupInterrupts()
+#define OUT_SHUTTER_OPEN 5
+#define OUT_LASER_PWM 6
+
+#define IN_POWER 7
+#define POWER_DEPTH 6
+#define POWER_RESOLUTION (pow(2, POWER_DEPTH) - 1)
+
+bool laserOn = false;
+bool shutterOn = false;
+
+void initPins()
 {
-    EIMSK |= (1 << INT0);                 // enable interrupt on INT0
-    EICRA |= (1 << ISC00) | (1 << ISC01); // rising edge interrupt to INT0
+    // inputs
+    pinMode(IN_LASER_ENABLE, INPUT_PULLUP);
+    pinMode(IN_SHUTTER_OPEN, INPUT_PULLUP);
+    for (int i = IN_POWER; i < IN_POWER + POWER_DEPTH; i++)
+    {
+        pinMode(i, INPUT_PULLUP);
+    }
+
+    // outputs
+    pinMode(OUT_LASER_PWM, OUTPUT);
+    pinMode(OUT_SHUTTER_OPEN, OUTPUT);
+}
+
+int getPowerFromPins()
+{
+    int power = 0b00000000;
+
+    for (int i = IN_POWER + POWER_DEPTH - 1; i >= IN_POWER; i--)
+    {
+        int value = digitalRead(i) == LOGICAL_HIGH;
+        power = power << 1;
+        power |= value;
+
+        // #ifdef SERIAL_ENABLED
+        //         if (Serial)
+        //         {
+        //             Serial.print("Pin ");
+        //             Serial.print(i);
+        //             Serial.print(" is ");
+        //             Serial.println(value);
+        //         }
+        // #endif
+    }
+
+    return power;
+}
+
+void handleLaser()
+{
+    laserOn = digitalRead(IN_LASER_ENABLE) == LOGICAL_HIGH;
+    shutterOn = digitalRead(IN_SHUTTER_OPEN) == LOGICAL_HIGH;
+
+    digitalWrite(OUT_SHUTTER_OPEN, shutterOn);
+
+    int power = getPowerFromPins();
+
+#ifdef SERIAL_ENABLED
+    if (Serial)
+    {
+        Serial.print("Laser: ");
+        Serial.println(laserOn);
+        Serial.print("Shutter: ");
+        Serial.println(shutterOn);
+        Serial.print("Power: ");
+        Serial.println(power / POWER_RESOLUTION);
+    }
+#endif
+
+    // start the pwm
+    if (laserOn && shutterOn)
+    {
+
+        if (power > 0)
+        {
+#ifdef SERIAL_ENABLED
+            if (Serial)
+            {
+                Serial.print("Power is set to: ");
+                Serial.println(power);
+            }
+#endif
+            setPower(power / POWER_RESOLUTION);
+            startPWM();
+        }
+    }
+
+    // stop the pwm
+    else if ((!laserOn || !shutterOn))
+    {
+#ifdef SERIAL_ENABLED
+        if (Serial)
+            Serial.println("Stopping PWM");
+#endif
+        // laserOn = false;
+        // analogWrite(LASER_OUT_PIN, 0);
+
+        stopPWM();
+    }
 }
 
 void setup()
 {
     cli(); // disable interrupts
-    pinMode(SHUTTER_PIN, OUTPUT);
+#ifdef SERIAL_ENABLED
+    Serial.begin(BAUDRATE);
+#endif
+    initPins();
 
-    initSerial(BAUDRATE);
+    cli();
+    attachInterrupt(digitalPinToInterrupt(IN_LASER_ENABLE), handleLaser, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(IN_SHUTTER_OPEN), handleLaser, CHANGE);
 
-    setupInterrupts();
-
-    initPWM();
-    setDuty(0.0);
-    stopPWM();
     sei(); // enable interrupts
+    Serial.println("Device online");
 }
-
-String message = "";
 
 void loop()
 {
-    // check for incoming bytes
-    while (Serial.available() > 0)
-    {
-        // read the incoming byte
-        char incoming = (char)Serial.read();
-
-        // check if the incoming byte is the terminator character
-        if (incoming != '\n')
-        {
-            // add the incoming char to the message
-            message += incoming;
-        }
-        else
-        {
-            // process the message
-            bool success = processMessage(message);
-            // reset the message buffer
-            message = "";
-        }
-    }
-}
-
-/// interrupt service routine for the int0 pin (D2)
-ISR(INT0_vect)
-{
-    /// Laser error pin
-    // Serial.println("Laser error");
-    laserError = true;
 }
