@@ -46,9 +46,8 @@ void setPower(double power)
     }
 #endif
 
-    // 0.375 duty -> 100 % laser power
-    // 255 * 37.5 / 100 = 95,625
-    setDuty(power * 0.375);
+    // 1.0 duty -> 100 % laser power
+    setDuty(power);
 }
 
 void setDuty(double duty)
